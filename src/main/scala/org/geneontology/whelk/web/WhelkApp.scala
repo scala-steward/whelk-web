@@ -61,7 +61,13 @@ object WhelkApp {
       cls := "w3-container",
       div(
         cls := "w3-row-padding",
-        h1("Whelk on the Web")
+        h1("Whelk on the Web"),
+        p(
+          a(href := "https://github.com/balhoff/whelk", "Whelk"),
+          " is an OWL EL+RL reasoner written in ",
+          a(href := "https://www.scala-lang.org", "Scala"),
+          ". Whelk works best on the JVM, but here it is running directly in a browser, using ",
+          a(href := "https://www.scala-js.org", "Scala.js"), "."),
       ),
       div(
         cls := "w3-row-padding",
@@ -69,6 +75,7 @@ object WhelkApp {
           cls := "w3-container w3-half",
           h3("Ontology in OWL functional syntax (imports will not be followed):"),
           textArea(
+            styleAttr := "font-family: monospace",
             width := "100%",
             height := "20em",
             inContext(thisNode => onInput.mapTo(thisNode.ref.value) --> ontologyTextBus)
