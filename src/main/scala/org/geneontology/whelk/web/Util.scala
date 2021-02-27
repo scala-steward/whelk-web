@@ -54,14 +54,14 @@ object Util {
       .flatMap { case (AtomicConcept(subclass), (equivs, superclasses)) =>
         val sub = Class(IRI(subclass))
         val subLabel = labels.getOrElse(sub.iri, s"<$subclass>")
-        val equivLis = equivs.to(List)
+        val equivRels = equivs.to(List)
           .map(c => Class(IRI(c.id)))
           .filterNot(c => equivToWithoutAnnotations.getOrElse(sub, Set.empty)(c))
           .map { equiv =>
             val equivLabel = labels.getOrElse(equiv.iri, s"<${equiv.iri.id}>")
             Relation("EquivalentTo", LabeledClass(sub, subLabel), LabeledClass(equiv, equivLabel))
           }
-        val superLis = superclasses.to(List)
+        val superRels = superclasses.to(List)
           .filterNot(_ == BuiltIn.Top)
           .map(c => Class(IRI(c.id)))
           .filterNot(c => subClassOfWithoutAnnotations.getOrElse(sub, Set.empty)(c))
@@ -69,7 +69,7 @@ object Util {
             val superclassLabel = labels.getOrElse(superclass.iri, s"<${superclass.iri.id}>")
             Relation("SubClassOf", LabeledClass(sub, subLabel), LabeledClass(superclass, superclassLabel))
           }
-        equivLis ::: superLis
+        equivRels ::: superRels
       }
   }
 
