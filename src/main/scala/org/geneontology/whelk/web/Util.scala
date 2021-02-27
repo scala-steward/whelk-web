@@ -29,22 +29,24 @@ object Util {
     Inferences(ontology, whelk, taxonomy, time)
   }
 
-  def assertedSubClassOfIndex(ontology: Ontology): Map[Class, Set[Class]] = ontology.axioms.foldLeft(Map.empty[Class, Set[Class]]) {
-    case (acc, SubClassOf(sub @ Class(_), sup @ Class(_), _)) =>
-      acc.updated(sub, acc.getOrElse(sub, Set.empty) + sup)
-    case (acc, _)                                             => acc
-  }
+  def assertedSubClassOfIndex(ontology: Ontology): Map[Class, Set[Class]] =
+    ontology.axioms.foldLeft(Map.empty[Class, Set[Class]]) {
+      case (acc, SubClassOf(sub @ Class(_), sup @ Class(_), _)) =>
+        acc.updated(sub, acc.getOrElse(sub, Set.empty) + sup)
+      case (acc, _)                                             => acc
+    }
 
-  def assertedEquivalentsIndex(ontology: Ontology): Map[Class, Set[Class]] = ontology.axioms.foldLeft(Map.empty[Class, Set[Class]]) {
-    case (acc, EquivalentClasses(classes, _)) =>
-      classes.items.to(List).combinations(2).foldLeft(acc) {
-        case (acc2, (first @ Class(_)) :: (second @ Class(_)) :: Nil) =>
-          acc2.updated(first, acc.getOrElse(first, Set.empty) + second)
-            .updated(second, acc.getOrElse(second, Set.empty) + first)
-        case (acc2, _)                                                => acc2
-      }
-    case (acc, _)                             => acc
-  }
+  def assertedEquivalentsIndex(ontology: Ontology): Map[Class, Set[Class]] =
+    ontology.axioms.foldLeft(Map.empty[Class, Set[Class]]) {
+      case (acc, EquivalentClasses(classes, _)) =>
+        classes.items.to(List).combinations(2).foldLeft(acc) {
+          case (acc2, (first @ Class(_)) :: (second @ Class(_)) :: Nil) =>
+            acc2.updated(first, acc.getOrElse(first, Set.empty) + second)
+              .updated(second, acc.getOrElse(second, Set.empty) + first)
+          case (acc2, _)                                                => acc2
+        }
+      case (acc, _)                             => acc
+    }
 
   def inferredSubsumptions(inferences: Inferences, labels: Map[IRI, String]): List[Relation] = {
     val subClassOfWithoutAnnotations = Util.assertedSubClassOfIndex(inferences.ontology)
