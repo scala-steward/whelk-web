@@ -4,41 +4,26 @@ import com.raquo.laminar.api.L._
 import com.raquo.laminar.nodes.ReactiveHtmlElement
 import org.geneontology.archimedes.io.OWLFunctionalSyntaxReader
 import org.geneontology.archimedes.owl._
-import org.geneontology.whelk.archimedes.Bridge
-import org.geneontology.whelk.{AtomicConcept, BuiltIn, Reasoner, ReasonerState}
+import org.geneontology.whelk.web.Util.{Inferences, computeInferences}
 import org.scalajs.dom
 import org.scalajs.dom.html.Paragraph
 
 object WhelkApp {
 
-  val RDFSLabel: AnnotationProperty = AnnotationProperty(IRI("http://www.w3.org/2000/01/rdf-schema#label"))
-
-  final case class Inferences(
-                               ontology: Ontology,
-                               reasonerState: ReasonerState,
-                               taxonomy: Map[AtomicConcept, (Set[AtomicConcept], Set[AtomicConcept])],
-                               time: Long
-                             )
-
-  private def lexicalForm(literal: Literal): String = literal match {
-    case PlainLiteral(text, _) => text
-    case TypedLiteral(text, _) => text
-  }
-
   val ontologyTextBus: EventBus[String] = new EventBus[String]()
 
-  val ontologyStream: EventStream[Either[String, Ontology]] =
+  val $ontology: Signal[Either[String, Ontology]] =
     ontologyTextBus.events.debounce(300).map { text =>
       if (text.isEmpty) Left("No ontology provided")
       else OWLFunctionalSyntaxReader.readOntology(text)
-    }
+    }.toSignal(Left("No ontology provided"))
 
-  val ontologyReportStream: EventStream[ReactiveHtmlElement[Paragraph]] = ontologyStream.map {
+  val $ontologyReport: Signal[ReactiveHtmlElement[Paragraph]] = $ontology.map {
     case Right(ontology) =>
       val annotationAxioms = ontology.axioms.count(_.isInstanceOf[AnnotationAxiom])
       val logicalAxioms = ontology.axioms.count(_.isInstanceOf[LogicalAxiom])
       p(
-        s"Ontology: ${ontology.id.map(_.iri.id).map(id => s"<$id>").getOrElse("<anonymous>")}",
+        s"Ontology: ${ontology.id.map(id => s"<${id.iri.id}>").getOrElse("<anonymous>")}",
         ul(
           li(s"$annotationAxioms annotation axioms"),
           li(s"$logicalAxioms logical axioms"),
@@ -47,84 +32,29 @@ object WhelkApp {
     case Left(error)     => p(s"Ontology parse error: $error")
   }
 
-  val labelIndexStream: EventStream[Map[IRI, String]] = ontologyStream.map { maybeOntology =>
-    maybeOntology.map { ontology =>
-      ontology.axioms.collect { case AnnotationAssertion(RDFSLabel, iri: IRI, literal: Literal, _) =>
-        iri -> lexicalForm(literal)
-      }.to(Map)
-    }.getOrElse(Map.empty)
-  }
+  val $labelIndex: Signal[Map[IRI, String]] = $ontology.map(_.map(Util.labelIndex).getOrElse(Map.empty))
 
-  val inferencesStream: EventStream[Option[Inferences]] = ontologyStream.map(_.toOption).map { maybeOntology =>
-    maybeOntology.map { ontology =>
-      val start = System.currentTimeMillis()
-      val axioms = Bridge.ontologyToAxioms(ontology)
-      val whelk = Reasoner.assert(axioms)
-      val taxonomy = whelk.computeTaxonomy
-      val stop = System.currentTimeMillis()
-      val time = stop - start
-      Inferences(ontology, whelk, taxonomy, time)
-    }
-  }
+  val $inferences: Signal[Option[Inferences]] = $ontology.map(_.toOption.map(computeInferences))
 
-  def assertedSubClassOfIndex(ontology: Ontology): Map[IRI, Set[IRI]] = ontology.axioms.foldLeft(Map.empty[IRI, Set[IRI]]) {
-    case (acc, SubClassOf(Class(sub), Class(sup), _)) =>
-      acc.updated(sub, acc.getOrElse(sub, Set.empty) + sup)
-    case (acc, _)                                     => acc
-  }
-
-  def assertedEquivalentsIndex(ontology: Ontology): Map[IRI, Set[IRI]] = ontology.axioms.foldLeft(Map.empty[IRI, Set[IRI]]) {
-    case (acc, EquivalentClasses(classes, _)) =>
-      classes.items.to(List).combinations(2).foldLeft(acc) {
-        case (acc2, Class(first) :: Class(second) :: Nil) =>
-          acc2.updated(first, acc.getOrElse(first, Set.empty) + second)
-            .updated(second, acc.getOrElse(second, Set.empty) + first)
-        case (acc2, _)                                    => acc2
-      }
-    case (acc, _)                             => acc
-  }
-
-  val renderedSubsumptions: EventStream[List[Li]] = inferencesStream.combineWith(labelIndexStream).map {
+  val $renderedSubsumptions: Signal[List[Li]] = $inferences.combineWith($labelIndex).map {
     case (Some(inferences), labels) =>
-      val subClassOfWithoutAnnotations = assertedSubClassOfIndex(inferences.ontology)
-      val equivToWithoutAnnotations = assertedEquivalentsIndex(inferences.ontology)
-      inferences.taxonomy.to(List)
-        .filterNot(_._1 == BuiltIn.Bottom)
-        .flatMap { case (AtomicConcept(subclass), (equivs, superclasses)) =>
-          val sub = IRI(subclass)
-          val subLabel = labels.getOrElse(sub, s"<$subclass>")
-          val equivLis = equivs.to(List)
-            .map(c => IRI(c.id))
-            .filterNot(c => equivToWithoutAnnotations.getOrElse(sub, Set.empty)(c))
-            .map { equiv =>
-              val equivLabel = labels.getOrElse(equiv, s"<${equiv.id}>")
-              li(
-                a(href := subclass, subLabel),
-                i(" EquivalentTo "),
-                a(href := equiv.id, equivLabel)
-              )
-            }
-          val superLis = superclasses.to(List)
-            .filterNot(_ == BuiltIn.Top)
-            .map(c => IRI(c.id))
-            .filterNot(c => subClassOfWithoutAnnotations.getOrElse(sub, Set.empty)(c))
-            .map { superclass =>
-              val superclassLabel = labels.getOrElse(superclass, s"<${superclass.id}>")
-              li(
-                a(href := subclass, subLabel),
-                i(" SubClassOf "),
-                a(href := superclass.id, superclassLabel)
-              )
-            }
-          equivLis ::: superLis
+      Util.inferredSubsumptions(inferences, labels)
+        .sortBy(rel => s"${rel.term1.label}${rel.term2.label}")
+        .map { rel =>
+          li(
+            a(href := rel.term1.cls.iri.id, rel.term1.label),
+            " ",
+            i(rel.label),
+            " ",
+            a(href := rel.term2.cls.iri.id, rel.term2.label)
+          )
         }
     case _                          => Nil
   }
 
-  val reasoningTimeMessage: EventStream[Option[ReactiveHtmlElement[Paragraph]]] = inferencesStream.map { maybeInferences =>
+  val $reasoningTimeMessage: Signal[Option[ReactiveHtmlElement[Paragraph]]] = $inferences.map { maybeInferences =>
     maybeInferences.map(inf => p(s"Reasoning done in: ${inf.time}ms"))
   }
-
 
   val appDiv: Div =
     div(
@@ -143,14 +73,14 @@ object WhelkApp {
             height := "20em",
             inContext(thisNode => onInput.mapTo(thisNode.ref.value) --> ontologyTextBus)
           ),
-          child <-- ontologyReportStream
+          child <-- $ontologyReport
         ),
         div(
           cls := "w3-container w3-half",
           h3("Inferred subsumptions:"),
-          p(child.maybe <-- reasoningTimeMessage),
+          p(child.maybe <-- $reasoningTimeMessage),
           ul(
-            children <-- renderedSubsumptions
+            children <-- $renderedSubsumptions
           )
         )
       )
