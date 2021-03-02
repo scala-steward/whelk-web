@@ -4,7 +4,7 @@ import com.raquo.laminar.api.L._
 import com.raquo.laminar.nodes.ReactiveHtmlElement
 import org.geneontology.archimedes.io.OWLFunctionalSyntaxReader
 import org.geneontology.archimedes.owl._
-import org.geneontology.whelk.web.Util.{Inferences, computeInferences}
+import org.geneontology.whelk.web.Util.{Inferences, Relation, computeInferences, iri}
 import org.scalajs.dom
 import org.scalajs.dom.html.Paragraph
 
@@ -36,21 +36,35 @@ object WhelkApp {
 
   val $inferences: Signal[Option[Inferences]] = $ontology.map(_.toOption.map(computeInferences))
 
-  val $renderedSubsumptions: Signal[List[Li]] = $inferences.combineWith($labelIndex).map {
+  val $inferencesAndLabels = $inferences.combineWith($labelIndex)
+
+  val $renderedSubsumptions: Signal[List[Li]] = $inferencesAndLabels.map {
     case (Some(inferences), labels) =>
-      Util.inferredSubsumptions(inferences, labels)
-        .sortBy(rel => s"${rel.term1.label}${rel.term2.label}")
-        .map { rel =>
-          li(
-            a(href := rel.term1.cls.iri.id, rel.term1.label),
-            " ",
-            i(rel.label),
-            " ",
-            a(href := rel.term2.cls.iri.id, rel.term2.label)
-          )
-        }
+      renderRelations(Util.inferredSubsumptions(inferences, labels))
     case _                          => Nil
   }
+
+  val $renderedPropertyAssertions: Signal[List[Li]] = $inferencesAndLabels.map {
+    case (Some(inferences), labels) => renderRelations(Util.inferredPropertyAssertions(inferences, labels))
+    case _                          => Nil
+  }
+
+  val $renderedClassAssertions: Signal[List[Li]] = $inferencesAndLabels.map {
+    case (Some(inferences), labels) => renderRelations(Util.inferredClassAssertions(inferences, labels))
+    case _                          => Nil
+  }
+
+  def renderRelations(relations: List[Relation]): List[Li] =
+    relations.sortBy(rel => s"${rel.term1.label}${rel.term2.label}")
+      .map { rel =>
+        li(
+          a(href := iri(rel.term1.cls).id, rel.term1.label),
+          " ",
+          i(rel.label),
+          " ",
+          a(href := iri(rel.term2.cls).id, rel.term2.label)
+        )
+      }
 
   val $reasoningTimeMessage: Signal[Option[ReactiveHtmlElement[Paragraph]]] = $inferences.map { maybeInferences =>
     maybeInferences.map(inf => p(s"Reasoning done in: ${inf.time}ms"))
@@ -61,7 +75,9 @@ object WhelkApp {
       cls := "w3-container",
       div(
         cls := "w3-row-padding",
-        h1("Whelk on the Web"),
+        h1(
+          styleAttr := "margin-top: 0",
+          "Whelk on the Web"),
         p(
           a(href := "https://github.com/balhoff/whelk", "Whelk"),
           " is an OWL EL+RL reasoner written in ",
@@ -75,19 +91,34 @@ object WhelkApp {
           cls := "w3-container w3-half",
           h3("Ontology in OWL functional syntax (imports will not be followed):"),
           textArea(
-            styleAttr := "font-family: monospace",
+            styleAttr := "font-family: monospace; font-size: small; line-height: normal",
             width := "100%",
             height := "20em",
-            inContext(thisNode => onInput.mapTo(thisNode.ref.value) --> ontologyTextBus)
+            controlled(
+              value <-- ontologyTextBus.events,
+              onInput.mapToValue --> ontologyTextBus
+            )
+          ),
+          button("Try families ontology example",
+            onClick.mapTo(FamiliesOntology.text) --> ontologyTextBus
           ),
           child <-- $ontologyReport
         ),
         div(
           cls := "w3-container w3-half",
-          h3("Inferred subsumptions:"),
+          h3("Reasoning results"),
           p(child.maybe <-- $reasoningTimeMessage),
-          ul(
+          h4("Inferred subsumptions:"),
+          ul(styleAttr := "font-size: small; line-height: normal",
             children <-- $renderedSubsumptions
+          ),
+          h4("Inferred class assertions:"),
+          ul(styleAttr := "font-size: small; line-height: normal",
+            children <-- $renderedClassAssertions
+          ),
+          h4("Inferred property assertions:"),
+          ul(styleAttr := "font-size: small; line-height: normal",
+            children <-- $renderedPropertyAssertions
           )
         )
       )
