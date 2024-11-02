@@ -17,6 +17,6 @@ scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8", "-Ypatma
 libraryDependencies ++= {
   Seq(
     "com.raquo" %%% "laminar" % "0.12.0",
-    "org.geneontology" %%% "whelk" % "1.1"
+    "org.geneontology" %%% "whelk" % "1.1.2"
   )
 }
