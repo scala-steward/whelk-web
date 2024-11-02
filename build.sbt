@@ -10,7 +10,7 @@ version := "0.1"
 
 licenses := Seq("BSD-3-Clause" -> url("https://opensource.org/licenses/BSD-3-Clause"))
 
-scalaVersion := "2.13.4"
+scalaVersion := "2.13.14"
 
 scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8", "-Ypatmat-exhaust-depth", "off")
 
