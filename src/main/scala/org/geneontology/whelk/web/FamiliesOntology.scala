@@ -10,7 +10,6 @@ Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
 Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
 Prefix(dc:=<http://purl.org/dc/terms/>)
 Ontology(<http://example.com/owl/families>
-Import( <http://example.org/otherOntologies/families.owl> )
 Annotation( dc:source <https://www.w3.org/TR/owl2-primer/> )
 
 Declaration( NamedIndividual( :John ) )
